@@ -19,11 +19,9 @@ jobs:
           - name: Windows x64 installers
             platform: windows-latest
             args: --bundles nsis,msi
-            artifact: windows-x64-installers
           - name: macOS universal installer
             platform: macos-latest
             args: --target universal-apple-darwin --bundles app,dmg
-            artifact: macos-universal-installer
 
     runs-on: ${{ matrix.platform }}
 
@@ -37,12 +35,35 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Normalize npm registry URLs
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const path = "package-lock.json";
+          const privateRegistry = "https://packages.applied-caas-gateway1.internal.api.openai.org/artifactory/api/npm/npm-public/";
+          const publicRegistry = "https://registry.npmjs.org/";
+          let content = fs.readFileSync(path, "utf8");
+          const before = content.split(privateRegistry).length - 1;
+          content = content.split(privateRegistry).join(publicRegistry);
+          fs.writeFileSync(path, content);
+          console.log(`Normalized ${before} private npm registry URL(s).`);
+          NODE
+
       - name: Configure public npm registry
         run: |
           npm config set registry https://registry.npmjs.org/
           npm config set fetch-retries 5
           npm config set fetch-retry-mintimeout 20000
           npm config set fetch-retry-maxtimeout 120000
+
+      - name: Verify package lock registry
+        shell: bash
+        run: |
+          if grep -q "applied-caas-gateway1.internal.api.openai.org" package-lock.json; then
+            echo "Private npm registry URL still exists in package-lock.json"
+            exit 1
+          fi
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable

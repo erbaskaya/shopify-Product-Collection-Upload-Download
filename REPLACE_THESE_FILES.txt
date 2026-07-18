@@ -1,0 +1,7 @@
+Replace these two files in the GitHub repository using the exact same paths:
+
+package-lock.json
+.github/workflows/build-installers.yml
+
+Then commit and start a NEW workflow run from Actions.
+Do not use Re-run on the old failed run.
