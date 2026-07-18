@@ -1,0 +1,12 @@
+REPLACE THESE TWO FILES IN THE GITHUB REPOSITORY
+
+1) Delete the existing root file and upload this file:
+   package-lock.json
+
+2) Delete the existing workflow file and upload this file to the same path:
+   .github/workflows/build-installers.yml
+
+Commit both files together, then start a NEW workflow run from:
+Actions > Build Windows and macOS installers > Run workflow
+
+Do not use Re-run jobs on an older failed run.
