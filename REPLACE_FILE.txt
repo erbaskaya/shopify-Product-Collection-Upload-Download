@@ -1,0 +1,21 @@
+SHOPIFY DESKTOP ARTIFACT UPLOAD FIX
+
+The native builds were already successful, but the selected tauri-action version
+ignored uploadWorkflowArtifacts and workflowArtifactNamePattern. Therefore the
+workflow finished successfully without creating downloadable artifacts.
+
+Replace this repository file:
+
+.github/workflows/build-installers.yml
+
+with the complete file in this package.
+
+This version:
+- builds with the local Tauri CLI using npx tauri build;
+- uploads Windows EXE and MSI files with actions/upload-artifact@v4;
+- uploads the macOS DMG and a zipped universal .app bundle;
+- keeps the npm registry and Cargo lock fixes;
+- fails clearly if expected installer files are missing.
+
+After committing the replacement, start a NEW workflow run from Actions.
+Do not re-run the old completed run.

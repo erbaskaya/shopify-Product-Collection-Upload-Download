@@ -38,7 +38,6 @@ jobs:
           cache: npm
 
       - name: Configure public npm registry
-        shell: bash
         run: |
           npm config set registry https://registry.npmjs.org/
           npm config set fetch-retries 5
@@ -61,15 +60,46 @@ jobs:
       - name: Validate frontend
         run: npm run build
 
-      - name: Refresh Rust lock file
+      - name: Generate Cargo lock file
         run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
 
       - name: Validate Rust backend
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Build native installers
-        uses: tauri-apps/tauri-action@v0
+        run: npx tauri build ${{ matrix.args }}
+
+      - name: Package macOS app bundle
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          APP_PATH="$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -type d -name '*.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app bundle found."
+            exit 1
+          fi
+          APP_NAME="$(basename "$APP_PATH" .app)"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" \
+            "src-tauri/target/universal-apple-darwin/release/bundle/macos/${APP_NAME}-universal.app.zip"
+
+      - name: Upload Windows installers
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
         with:
-          args: ${{ matrix.args }}
-          uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: ${{ matrix.artifact }}
+          name: windows-x64-installers
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload macOS installers
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal-installer
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*-universal.app.zip
+          if-no-files-found: error
+          retention-days: 30
