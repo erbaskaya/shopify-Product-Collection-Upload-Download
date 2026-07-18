@@ -61,8 +61,11 @@ jobs:
       - name: Validate frontend
         run: npm run build
 
+      - name: Refresh Rust lock file
+        run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+
       - name: Validate Rust backend
-        run: cargo check --manifest-path src-tauri/Cargo.toml --locked
+        run: cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Build native installers
         uses: tauri-apps/tauri-action@v0
