@@ -1,0 +1,320 @@
+/* =========================================================
+   GENERAL READABILITY SETTINGS
+   Improves description, table, and form readability without changing headings.
+   
+========================================================= */
+
+body {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* Form controls */
+button,
+input,
+select,
+textarea {
+  font-size: 12px !important;
+}
+
+/* Top area */
+.breadcrumb {
+  font-size: 12px !important;
+}
+
+.user-box strong {
+  font-size: 13px !important;
+}
+
+.user-box small {
+  font-size: 11px !important;
+}
+
+/* Sidebar footer */
+.connection-status strong {
+  font-size: 13px !important;
+}
+
+.connection-status small {
+  font-size: 11px !important;
+  line-height: 1.4;
+}
+
+.version {
+  font-size: 11px !important;
+}
+
+/* Home page */
+.welcome-card p {
+  font-size: 14px !important;
+  line-height: 1.65;
+}
+
+.primary-button,
+.secondary-button {
+  font-size: 13px !important;
+}
+
+.stat-card p {
+  font-size: 12px !important;
+}
+
+.stat-card small {
+  font-size: 11px !important;
+}
+
+.panel-header p {
+  font-size: 12px !important;
+}
+
+.text-button {
+  font-size: 12px !important;
+}
+
+.action-card strong {
+  font-size: 13px !important;
+}
+
+.action-card small {
+  font-size: 11px !important;
+  line-height: 1.5;
+}
+
+.empty-state h4 {
+  font-size: 14px !important;
+}
+
+.empty-state p {
+  font-size: 12px !important;
+}
+
+/* Product import intro */
+.import-eyebrow {
+  font-size: 11px !important;
+}
+
+.import-intro p {
+  font-size: 13px !important;
+  line-height: 1.65;
+}
+
+.supported-formats span {
+  font-size: 11px !important;
+}
+
+.drop-zone p {
+  font-size: 13px !important;
+}
+
+.drop-zone small {
+  font-size: 11px !important;
+}
+
+.select-file-button {
+  font-size: 13px !important;
+}
+
+/* File details */
+.summary-label {
+  font-size: 10px !important;
+}
+
+.file-summary-main h3 {
+  font-size: 15px !important;
+}
+
+.file-summary-main p {
+  font-size: 11px !important;
+}
+
+.file-ready-badge,
+.clear-file-button,
+.change-file-button {
+  font-size: 11px !important;
+}
+
+/* Excel sayfa sekmeleri */
+.sheet-tabs-label {
+  font-size: 11px !important;
+}
+
+.sheet-tab {
+  font-size: 11px !important;
+}
+
+.sheet-tab small {
+  font-size: 10px !important;
+}
+
+/* Preview area */
+.preview-header h3 {
+  font-size: 16px !important;
+}
+
+.preview-header p {
+  font-size: 12px !important;
+}
+
+.preview-search {
+  font-size: 12px !important;
+}
+
+/* Preview table */
+.preview-table {
+  font-size: 11px !important;
+}
+
+.preview-table th {
+  font-size: 10px !important;
+}
+
+.preview-table th,
+.preview-table td {
+  padding: 12px 13px !important;
+}
+
+.preview-footer span {
+  font-size: 11px !important;
+}
+
+.preview-footer small {
+  font-size: 10px !important;
+}
+
+.continue-import-button {
+  font-size: 12px !important;
+}
+
+/* Column mapping header */
+.mapping-eyebrow {
+  font-size: 11px !important;
+}
+
+.mapping-header h3 {
+  font-size: 20px !important;
+}
+
+.mapping-header p {
+  font-size: 12px !important;
+  line-height: 1.65;
+}
+
+/* Counter cards */
+.mapping-counters strong {
+  font-size: 20px !important;
+}
+
+.mapping-counters span {
+  font-size: 10px !important;
+}
+
+/* Arama ve filtre */
+.mapping-search-area > input[type="search"] {
+  font-size: 12px !important;
+}
+
+.unmapped-filter {
+  font-size: 11px !important;
+}
+
+.mapping-secondary-button,
+.mapping-auto-button,
+.mapping-back-button,
+.mapping-save-button {
+  font-size: 11px !important;
+}
+
+/* Alerts */
+.mapping-warning strong {
+  font-size: 12px !important;
+}
+
+.mapping-warning p {
+  font-size: 11px !important;
+  line-height: 1.5;
+}
+
+/* Column mapping table */
+.mapping-table th {
+  font-size: 10px !important;
+}
+
+.mapping-table th,
+.mapping-table td {
+  padding: 13px 14px !important;
+}
+
+.source-column strong {
+  font-size: 11px !important;
+}
+
+.source-column small {
+  font-size: 10px !important;
+}
+
+.sample-value {
+  font-size: 10px !important;
+  line-height: 1.55;
+}
+
+.mapping-select {
+  height: 39px !important;
+  font-size: 11px !important;
+}
+
+.mapping-description {
+  margin-top: 6px !important;
+  font-size: 10px !important;
+  line-height: 1.45;
+}
+
+.mapping-status {
+  font-size: 10px !important;
+}
+
+/* Metafield area */
+.metafield-editor-heading strong {
+  font-size: 12px !important;
+}
+
+.metafield-editor-heading small {
+  font-size: 10px !important;
+}
+
+.metafield-editor-heading > span {
+  font-size: 9px !important;
+}
+
+.metafield-field > span {
+  font-size: 10px !important;
+}
+
+.metafield-field input,
+.metafield-field select {
+  height: 36px !important;
+  font-size: 11px !important;
+}
+
+.metafield-definition-check {
+  font-size: 11px !important;
+  line-height: 1.45;
+}
+
+/* Footer and success message */
+.mapping-footer span {
+  font-size: 11px !important;
+}
+
+.mapping-saved-message {
+  font-size: 12px !important;
+  line-height: 1.5;
+}
+
+/* Error messages */
+.import-error strong {
+  font-size: 12px !important;
+}
+
+.import-error p {
+  font-size: 11px !important;
+}
