@@ -740,11 +740,64 @@ function parseJsonl(content: string): CollectionRecord[] {
   return Array.from(collections.values());
 }
 
+type GraphqlErrorItem = {
+  message: string;
+  extensions?: {
+    code?: string;
+  };
+};
+
+type GraphqlCostExtensions = {
+  cost?: {
+    requestedQueryCost?: number;
+    actualQueryCost?: number | null;
+    throttleStatus?: {
+      maximumAvailable?: number;
+      currentlyAvailable?: number;
+      restoreRate?: number;
+    };
+  };
+};
+
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+
+function isThrottled(errors: GraphqlErrorItem[] | undefined): boolean {
+  return Boolean(
+    errors?.some(
+      (item) =>
+        item.extensions?.code === "THROTTLED" ||
+        item.message.trim().toLowerCase() === "throttled",
+    ),
+  );
+}
+
+function calculateThrottleDelay(
+  extensions: GraphqlCostExtensions | undefined,
+  attempt: number,
+): number {
+  const cost = extensions?.cost;
+  const requested = Number(cost?.requestedQueryCost ?? 0);
+  const available = Number(cost?.throttleStatus?.currentlyAvailable ?? 0);
+  const restoreRate = Number(cost?.throttleStatus?.restoreRate ?? 0);
+
+  if (requested > 0 && restoreRate > 0) {
+    const missing = Math.max(0, requested - available);
+    return Math.min(30_000, Math.max(1_000, Math.ceil((missing / restoreRate) * 1_000) + 750));
+  }
+
+  return Math.min(30_000, 1_500 * 2 ** attempt);
+}
+
 async function fetchSourceDetails(
   admin: AdminClient,
   collections: CollectionRecord[],
 ): Promise<void> {
-  const batchSize = 12;
+  // SOURCE_SELECTION is intentionally detailed and therefore expensive.
+  // Reading one collection per request keeps every query below Shopify's
+  // single-query limit and makes throttle recovery predictable.
+  const batchSize = 1;
+  const maxAttempts = 10;
 
   for (let index = 0; index < collections.length; index += batchSize) {
     const batch = collections.slice(index, index + batchSize);
@@ -760,41 +813,70 @@ async function fetchSourceDetails(
       )
       .join("\n");
 
-    const response = await admin.graphql(
-      `#graphql
-        query CollectionHybridSources {
-          ${fields}
-        }
-      `,
-    );
+    let completed = false;
 
-    const payload = await response.json() as {
-      data?: Record<
-        string,
-        {
-          id: string;
-          sources: CollectionSource[];
-        } | null
-      >;
-      errors?: Array<{ message: string }>;
-    };
-
-    const graphqlError = payload.errors
-      ?.map((item) => item.message)
-      .join(", ");
-
-    if (graphqlError) {
-      throw new Error(
-        `Collection sources could not be read: ${graphqlError}`,
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const response = await admin.graphql(
+        `#graphql
+          query CollectionHybridSources {
+            ${fields}
+          }
+        `,
       );
+
+      const payload = await response.json() as {
+        data?: Record<
+          string,
+          {
+            id: string;
+            sources: CollectionSource[];
+          } | null
+        >;
+        errors?: GraphqlErrorItem[];
+        extensions?: GraphqlCostExtensions;
+      };
+
+      if (isThrottled(payload.errors)) {
+        if (attempt === maxAttempts - 1) {
+          throw new Error(
+            "Collection sources could not be read because Shopify continued to throttle the request after multiple retries.",
+          );
+        }
+
+        await wait(calculateThrottleDelay(payload.extensions, attempt));
+        continue;
+      }
+
+      const graphqlError = payload.errors
+        ?.map((item) => item.message)
+        .join(", ");
+
+      if (graphqlError) {
+        throw new Error(
+          `Collection sources could not be read: ${graphqlError}`,
+        );
+      }
+
+      for (let itemIndex = 0; itemIndex < batch.length; itemIndex += 1) {
+        const sourceData = payload.data?.[`c${itemIndex}`];
+
+        if (sourceData) {
+          batch[itemIndex].sources = sourceData.sources || [];
+        }
+      }
+
+      completed = true;
+      break;
     }
 
-    for (let itemIndex = 0; itemIndex < batch.length; itemIndex += 1) {
-      const sourceData = payload.data?.[`c${itemIndex}`];
+    if (!completed) {
+      throw new Error("Collection sources could not be read.");
+    }
 
-      if (sourceData) {
-        batch[itemIndex].sources = sourceData.sources || [];
-      }
+    // Leave a small gap between expensive source queries. Shopify refunds
+    // unused query cost, but the short pause prevents burst throttling.
+    if (index + batchSize < collections.length) {
+      await wait(250);
     }
   }
 }
