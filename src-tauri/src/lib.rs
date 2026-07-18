@@ -883,20 +883,21 @@ fn diagnostics(app: AppHandle, state: State<'_, AppState>) -> Result<Diagnostics
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
-            let app_data_dir = app
-                .path()
-                .app_data_dir()
-                .map_err(|error| error.to_string())?;
+        .setup(|app| -> Result<(), Box<dyn std::error::Error>> {
+            let app_data_dir = app.path().app_data_dir()?;
             let db_path = app_data_dir.join("shopify-desktop.sqlite");
-            init_db(&db_path)?;
+
+            init_db(&db_path).map_err(std::io::Error::other)?;
+
+            let http = Client::builder()
+                .user_agent("Hausone Shopify Desktop/1.0")
+                .build()?;
+
             app.manage(AppState {
                 db_path: Arc::new(db_path),
-                http: Client::builder()
-                    .user_agent("Hausone Shopify Desktop/1.0")
-                    .build()
-                    .map_err(|error| error.to_string())?,
+                http,
             });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

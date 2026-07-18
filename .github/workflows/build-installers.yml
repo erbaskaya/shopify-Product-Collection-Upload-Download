@@ -29,12 +29,12 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install Rust stable
@@ -53,9 +53,12 @@ jobs:
       - name: Validate frontend
         run: npm run build
 
+      - name: Validate Rust backend
+        run: cargo check --manifest-path src-tauri/Cargo.toml --locked
+
       - name: Build native installers
-        uses: tauri-apps/tauri-action@v0.6.2
+        uses: tauri-apps/tauri-action@v0
         with:
           args: ${{ matrix.args }}
           uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: ${{ matrix.artifact }}
+          workflowArtifactName: ${{ matrix.artifact }}
