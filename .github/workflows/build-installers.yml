@@ -1,0 +1,61 @@
+name: Build Windows and macOS installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64 installers
+            platform: windows-latest
+            args: --bundles nsis,msi
+            artifact: windows-x64-installers
+          - name: macOS universal installer
+            platform: macos-latest
+            args: --target universal-apple-darwin --bundles app,dmg
+            artifact: macos-universal-installer
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Validate frontend
+        run: npm run build
+
+      - name: Build native installers
+        uses: tauri-apps/tauri-action@v0.6.2
+        with:
+          args: ${{ matrix.args }}
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: ${{ matrix.artifact }}
