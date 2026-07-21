@@ -41,7 +41,7 @@ export async function exportBlogs(admin: AdminClient, limit = 10000): Promise<Da
   const rows: DataRow[] = [];
   let cursor: string | null = null;
   while (rows.length < limit) {
-    const data: any = await graphqlData<{
+    const data = await graphqlData<{
       blogs: {
         nodes: BlogNode[];
         pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -117,7 +117,7 @@ export async function exportBlogs(admin: AdminClient, limit = 10000): Promise<Da
 }
 
 async function findBlog(admin: AdminClient, handle: string): Promise<BlogNode | null> {
-  const data: any = await graphqlData<{
+  const data = await graphqlData<{
     blogs: { nodes: BlogNode[] };
   }>(
     admin,
@@ -147,7 +147,7 @@ async function createBlog(admin: AdminClient, row: DataRow): Promise<BlogNode> {
   const title = optionalText(firstValue(row, ["Blog Title", "Blog"]));
   if (!title) throw new Error("Blog Title is required.");
   const handle = optionalText(firstValue(row, ["Blog Handle"])) || slugify(title);
-  const data: any = await graphqlData<{
+  const data = await graphqlData<{
     blogCreate: {
       blog: BlogNode | null;
       userErrors: Array<{ field?: string[]; message: string }>;
@@ -253,7 +253,7 @@ export async function importBlogs(
       if (seoTitle || seoDescription) article.seo = { title: seoTitle || undefined, description: seoDescription || undefined };
 
       if (existingId) {
-        const data: any = await graphqlData<{
+        const data = await graphqlData<{
           articleUpdate: { article: { id: string } | null; userErrors: Array<{ field?: string[]; message: string }> };
         }>(
           admin,
@@ -271,7 +271,7 @@ export async function importBlogs(
         if (message) throw new Error(message);
         result.articlesUpdated += 1;
       } else {
-        const data: any = await graphqlData<{
+        const data = await graphqlData<{
           articleCreate: { article: { id: string } | null; userErrors: Array<{ field?: string[]; message: string }> };
         }>(
           admin,

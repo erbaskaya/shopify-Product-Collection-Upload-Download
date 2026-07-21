@@ -63,7 +63,7 @@ export async function previewPriceChanges(
   let cursor: string | null = null;
 
   while (output.length < limit) {
-    const data: any = await graphqlData<{
+    const data = await graphqlData<{
       products: {
         nodes: ProductNode[];
         pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -155,7 +155,7 @@ export async function applyPriceChanges(
 
   for (const [productId, variants] of groups) {
     try {
-      const data: any = await graphqlData<{
+      const data = await graphqlData<{
         productVariantsBulkUpdate: {
           productVariants: Array<{ id: string }>;
           userErrors: Array<{ field?: string[]; message: string }>;

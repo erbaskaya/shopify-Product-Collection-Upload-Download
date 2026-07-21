@@ -19,7 +19,7 @@ export async function exportOrders(
   let cursor: string | null = null;
 
   while (rows.length < limit) {
-    const data: any = await graphqlData<{
+    const data = await graphqlData<{
       orders: {
         nodes: Array<{
           id: string;
@@ -177,7 +177,7 @@ async function resolveVariantId(admin: AdminClient, row: DataRow): Promise<strin
   if (id.startsWith("gid://shopify/ProductVariant/")) return id;
   const sku = optionalText(firstValue(row, ["Variant SKU", "SKU", "sku"]));
   if (!sku) return null;
-  const data: any = await graphqlData<{
+  const data = await graphqlData<{
     productVariants: { nodes: Array<{ id: string }> };
   }>(
     admin,
@@ -276,7 +276,7 @@ export async function importOrders(
         };
       }
 
-      const data: any = await graphqlData<{
+      const data = await graphqlData<{
         orderCreate: {
           order: { id: string; name: string } | null;
           userErrors: Array<{ field?: string[]; message: string }>;

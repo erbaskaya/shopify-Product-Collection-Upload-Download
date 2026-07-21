@@ -19,7 +19,7 @@ export async function exportCustomers(
   let cursor: string | null = null;
 
   while (rows.length < limit) {
-    const data: any = await graphqlData<{
+    const data = await graphqlData<{
       customers: {
         nodes: Array<{
           id: string;
@@ -148,7 +148,7 @@ async function findCustomerId(admin: AdminClient, row: DataRow): Promise<string 
   if (id.startsWith("gid://shopify/Customer/")) return id;
   const email = optionalText(firstValue(row, ["Email"]));
   if (!email) return null;
-  const data: any = await graphqlData<{
+  const data = await graphqlData<{
     customer: { id: string } | null;
   }>(
     admin,
@@ -210,7 +210,7 @@ export async function importCustomers(
       if (!existingId && address) input.addresses = [address];
 
       if (existingId) {
-        const data: any = await graphqlData<{
+        const data = await graphqlData<{
           customerUpdate: {
             customer: { id: string } | null;
             userErrors: Array<{ field?: string[]; message: string }>;
@@ -253,7 +253,7 @@ export async function importCustomers(
           if (addressError) result.errors.push(`Row ${index + 2} address: ${addressError}`);
         }
       } else {
-        const data: any = await graphqlData<{
+        const data = await graphqlData<{
           customerCreate: {
             customer: { id: string } | null;
             userErrors: Array<{ field?: string[]; message: string }>;

@@ -50,7 +50,7 @@ export async function previewDiscountProducts(
   const products: DiscountProductPreview[] = [];
   let cursor: string | null = null;
   while (products.length < 250) {
-    const data: any = await graphqlData<{
+    const data = await graphqlData<{
       products: {
         nodes: DiscountProductPreview[];
         pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -118,7 +118,7 @@ export async function createDiscount(
 
   if (input.discountType === "code") {
     if (!input.code.trim()) throw new Error("Discount code is required.");
-    const data: any = await graphqlData<{
+    const data = await graphqlData<{
       discountCodeBasicCreate: {
         codeDiscountNode: { id: string; codeDiscount: { title: string } } | null;
         userErrors: Array<{ field?: string[]; message: string }>;
@@ -149,7 +149,7 @@ export async function createDiscount(
     return { id: node.id, title: node.codeDiscount.title, selectedProducts: products.length };
   }
 
-  const data: any = await graphqlData<{
+  const data = await graphqlData<{
     discountAutomaticBasicCreate: {
       automaticDiscountNode: { id: string; automaticDiscount: { title: string } } | null;
       userErrors: Array<{ field?: string[]; message: string }>;

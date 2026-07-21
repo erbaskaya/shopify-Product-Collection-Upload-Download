@@ -64,7 +64,7 @@ export async function previewInventoryChanges(
   let cursor: string | null = null;
 
   while (output.length < limit) {
-    const data: any = await graphqlData<{
+    const data = await graphqlData<{
       products: {
         nodes: ProductNode[];
         pageInfo: { hasNextPage: boolean; endCursor: string | null };
@@ -150,7 +150,7 @@ export async function applyInventoryChanges(
   for (let index = 0; index < rows.length; index += batchSize) {
     const batch = rows.slice(index, index + batchSize);
     try {
-      const data: any = await graphqlData<{
+      const data = await graphqlData<{
         inventoryAdjustQuantities: {
           inventoryAdjustmentGroup: {
             changes: Array<{ delta: number; quantityAfterChange: number | null }>;
