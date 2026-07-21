@@ -25,7 +25,7 @@ BUILD-WINDOWS.cmd
 Output:
 
 ```text
-installers\windows\Shopify Product Collection Upload_1.0.1_x64-setup.exe
+installers\windows\Shopify Product Collection Upload_1.0.2_x64-setup.exe
 ```
 
 PowerShell alternative:

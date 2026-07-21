@@ -533,6 +533,96 @@ async fn http_get_text(state: State<'_, AppState>, url: String) -> Result<String
     Ok(text)
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ZipEntryTransfer {
+    name: String,
+    base64_data: String,
+}
+
+#[tauri::command]
+async fn http_get_binary(state: State<'_, AppState>, url: String) -> Result<String, String> {
+    let response = state.http.get(url).send().await.map_err(|error| error.to_string())?;
+    let status = response.status();
+    let bytes = response.bytes().await.map_err(|error| error.to_string())?;
+    if !status.is_success() {
+        return Err(format!("Download failed with HTTP {status}"));
+    }
+    Ok(BASE64.encode(bytes))
+}
+
+#[tauri::command]
+async fn http_put_binary(
+    state: State<'_, AppState>,
+    url: String,
+    content_type: String,
+    base64_data: String,
+) -> Result<(), String> {
+    let bytes = BASE64.decode(base64_data).map_err(|error| error.to_string())?;
+    let response = state.http.put(url).header("Content-Type", content_type).body(bytes).send().await.map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("Upload failed with HTTP {}", response.status()));
+    }
+    Ok(())
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MultipartParameter { name: String, value: String }
+
+#[tauri::command]
+async fn http_post_multipart(
+    state: State<'_, AppState>,
+    url: String,
+    parameters: Vec<MultipartParameter>,
+    file_name: String,
+    content_type: String,
+    base64_data: String,
+) -> Result<(), String> {
+    let bytes = BASE64.decode(base64_data).map_err(|error| error.to_string())?;
+    let mut form = reqwest::multipart::Form::new();
+    for parameter in parameters { form = form.text(parameter.name, parameter.value); }
+    let part = reqwest::multipart::Part::bytes(bytes).file_name(file_name).mime_str(&content_type).map_err(|error| error.to_string())?;
+    form = form.part("file", part);
+    let response = state.http.post(url).multipart(form).send().await.map_err(|error| error.to_string())?;
+    if !response.status().is_success() { return Err(format!("Multipart upload failed with HTTP {}", response.status())); }
+    Ok(())
+}
+
+#[tauri::command]
+fn save_zip_entries(default_name: String, entries: Vec<ZipEntryTransfer>) -> Result<Option<String>, String> {
+    let path = rfd::FileDialog::new().set_file_name(&default_name).save_file();
+    let Some(path) = path else { return Ok(None); };
+    let file = File::create(&path).map_err(|error| error.to_string())?;
+    let mut zip = ZipWriter::new(file);
+    for entry in entries {
+        let bytes = BASE64.decode(entry.base64_data).map_err(|error| error.to_string())?;
+        zip.start_file(entry.name, SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated)).map_err(|error| error.to_string())?;
+        zip.write_all(&bytes).map_err(|error| error.to_string())?;
+    }
+    zip.finish().map_err(|error| error.to_string())?;
+    Ok(Some(path.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+fn pick_zip_entries() -> Result<Vec<ZipEntryTransfer>, String> {
+    let path = rfd::FileDialog::new().add_filter("ZIP archive", &["zip"]).pick_file();
+    let Some(path) = path else { return Ok(Vec::new()); };
+    let file = File::open(path).map_err(|error| error.to_string())?;
+    let mut archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
+    let mut output = Vec::new();
+    for index in 0..archive.len() {
+        let mut item = archive.by_index(index).map_err(|error| error.to_string())?;
+        if item.is_dir() { continue; }
+        let mut bytes = Vec::new();
+        item.read_to_end(&mut bytes).map_err(|error| error.to_string())?;
+        output.push(ZipEntryTransfer { name: item.name().to_string(), base64_data: BASE64.encode(bytes) });
+    }
+    Ok(output)
+}
+
 #[tauri::command]
 fn get_settings(state: State<'_, AppState>, store_id: String) -> Result<Value, String> {
     let connection = open_db(&state.db_path)?;
@@ -926,6 +1016,11 @@ pub fn run() {
             test_store_connection,
             shopify_graphql,
             http_get_text,
+            http_get_binary,
+            http_put_binary,
+            http_post_multipart,
+            save_zip_entries,
+            pick_zip_entries,
             get_settings,
             save_settings,
             list_history,

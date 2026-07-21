@@ -35,7 +35,7 @@ find "$BUNDLE_ROOT" -type f -name '*.dmg' -exec cp -f {} "$DESTINATION/" \;
 
 APP_PATH="$(find "$BUNDLE_ROOT" -maxdepth 3 -type d -name '*.app' -print -quit || true)"
 if [[ -n "$APP_PATH" ]]; then
-  ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$DESTINATION/Shopify-Product-Collection-Upload-1.0.1-universal.app.zip"
+  ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$DESTINATION/Shopify-Product-Collection-Upload-1.0.2-universal.app.zip"
 fi
 
 echo
