@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { desktopApi, type SaveStoreInput, type StoreRecord } from "../lib/desktopApi";
+import { desktopApi, isTauriRuntime, type SaveStoreInput, type StoreRecord } from "../lib/desktopApi";
 import "./common.css";
 
 interface StoresPageProps {
@@ -67,7 +67,7 @@ export default function StoresPage({ stores, onStoresChanged }: StoresPageProps)
     setError("");
     try {
       const saved = await desktopApi.saveStore(form);
-      setMessage(`${saved.name} was saved. The access token is stored in the operating system credential vault.`);
+      setMessage(`${saved.name} was saved. ${isTauriRuntime()?"The access token is stored in the operating system credential vault.":"The access token is encrypted and stored in PostgreSQL."}`);
       await onStoresChanged();
       editStore(saved);
     } catch (reason) {
@@ -150,7 +150,7 @@ export default function StoresPage({ stores, onStoresChanged }: StoresPageProps)
             <div className="field field-wide">
               <label>Admin API access token</label>
               <input type="password" autoComplete="new-password" value={form.accessToken ?? ""} onChange={(e) => setForm({ ...form, accessToken: e.target.value })} placeholder={editing ? "Leave blank to keep the saved token" : "shpat_..."} />
-              <small>The token is stored in Windows Credential Manager or macOS Keychain. Because the token shared in chat is exposed, rotate it in Shopify after the connection is verified.</small>
+              <small>{isTauriRuntime()?"The token is stored in Windows Credential Manager or macOS Keychain.":"The token is encrypted before being stored in PostgreSQL and is never returned to the browser after saving."}</small>
             </div>
             <label className="checkbox-row field-wide"><input type="checkbox" checked={Boolean(form.setActive)} onChange={(e) => setForm({ ...form, setActive: e.target.checked })} /><span><strong>Set as active store</strong><small>Product and collection operations use the active store by default.</small></span></label>
           </div>
@@ -170,7 +170,7 @@ export default function StoresPage({ stores, onStoresChanged }: StoresPageProps)
                 <tr key={store.id}>
                   <td><strong>{store.name}</strong><br/><small>{store.website || "No public website"}</small></td>
                   <td className="monospace">{store.domain}</td><td>{store.apiVersion}</td>
-                  <td><span className={`status-pill ${store.tokenPresent ? "status-success" : "status-error"}`}>{store.tokenPresent ? "Securely saved" : "Missing"}</span></td>
+                  <td><span className={`status-pill ${store.tokenPresent ? "status-success" : "status-error"}`}>{store.tokenPresent ? (isTauriRuntime()?"Securely saved":"Encrypted") : "Missing"}</span></td>
                   <td><span className={`status-pill ${store.isActive ? "status-success" : ""}`}>{store.isActive ? "Active" : "Inactive"}</span></td>
                   <td><div className="toolbar-group">
                     {!store.isActive && <button className="button-text" disabled={busy} onClick={() => void activate(store.id)}>Activate</button>}

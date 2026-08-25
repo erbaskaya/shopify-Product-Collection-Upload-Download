@@ -789,3 +789,4 @@ button {
     width: 100%;
   }
 }.store-selector{max-width:310px;height:40px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:11px}
+.web-logout{width:100%;margin-top:8px;padding:9px 11px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.04);color:#aeb8c4;font-size:11px;font-weight:700;cursor:pointer}.web-logout:hover{background:rgba(255,255,255,.08);color:#fff}

@@ -29,3 +29,9 @@ installers/windows/*
 installers/macos/*
 !installers/windows/.gitkeep
 !installers/macos/.gitkeep
+
+# Web environment secrets
+.env
+.env.*
+!.env.example
+.vercel

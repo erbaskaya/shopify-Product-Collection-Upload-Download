@@ -1,6 +1,6 @@
-# Shopify Product Collection Upload Desktop
+# Shopify Product / Collection Tools
 
-A local, multi-store Tauri desktop application for Hausone GmbH.
+A multi-store Shopify operations application that can run as a **Tauri desktop app** or as a **Vercel web panel**.
 
 ## Included modules
 
@@ -8,20 +8,38 @@ A local, multi-store Tauri desktop application for Hausone GmbH.
 - Live dashboard
 - Product import with preview, column mapping, validation, safe test, batch import, images, inventory, and metafields
 - Product export to CSV, XLSX, and JSON
-- Shopify 2026-07 hybrid collection import and export
-- Persistent local activity history and reports
+- Shopify hybrid collection import and export
+- Price Manager
+- Inventory Manager
+- Customer Transfer
+- Order Transfer
+- Blog Transfer
+- Discount Manager
+- SKU Product Images
+- Store Media Export
+- Persistent activity history and reports
 - Product and collection file templates
 - Backup and restore without access tokens
 - Diagnostics
 - Per-store settings
 - Windows and macOS installer build automation
 
-## Development
+## Desktop development
 
 ```bash
 npm ci
 npm run tauri dev
 ```
+
+Desktop storage uses SQLite plus Windows Credential Manager/macOS Keychain for Shopify access tokens.
+
+## Web / Vercel
+
+The web adapter uses PostgreSQL/Neon for persistent data and encrypts Shopify access tokens before storage. The Vercel panel is protected by `PANEL_PASSWORD` and an HttpOnly session cookie.
+
+See [VERCEL-SETUP.md](VERCEL-SETUP.md).
+
+Recommended Vercel project name: `shopifytools` → `https://shopifytools.vercel.app` when available.
 
 ## Frontend validation
 
@@ -32,7 +50,3 @@ npm run build
 ## Installers
 
 See [BUILD_INSTALLERS.md](BUILD_INSTALLERS.md).
-
-## Token safety
-
-Shopify Admin API tokens are stored by the Rust backend in Windows Credential Manager or macOS Keychain. They are not stored in SQLite, source code, backup ZIP files, or generated installers.
