@@ -790,3 +790,108 @@ button {
   }
 }.store-selector{max-width:310px;height:40px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:11px}
 .web-logout{width:100%;margin-top:8px;padding:9px 11px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.04);color:#aeb8c4;font-size:11px;font-weight:700;cursor:pointer}.web-logout:hover{background:rgba(255,255,255,.08);color:#fff}
+
+/* Accordion sidebar groups */
+.menu-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.menu-group {
+  border-radius: 10px;
+}
+
+.menu-group-button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 12px;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--sidebar-text);
+  cursor: pointer;
+  text-align: left;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.menu-group-button:hover,
+.menu-group-open > .menu-group-button {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+.menu-group-current:not(.menu-group-open) > .menu-group-button {
+  color: #ffffff;
+}
+
+.menu-group-icon {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  color: #aeb8c5;
+  font-size: 15px;
+}
+
+.menu-group-label {
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.menu-group-chevron {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: #7f8a99;
+  font-size: 14px;
+  transform: rotate(-90deg);
+  transition: transform 160ms ease, color 160ms ease;
+}
+
+.menu-group-chevron-open {
+  color: #cbd3dd;
+  transform: rotate(0deg);
+}
+
+.menu-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 3px 0 7px;
+  padding-left: 10px;
+}
+
+.menu-submenu .menu-item {
+  position: relative;
+  margin-bottom: 0;
+  padding: 9px 11px 9px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.menu-submenu .menu-item::before {
+  position: absolute;
+  left: 2px;
+  width: 1px;
+  height: 16px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  content: "";
+}
+
+.menu-submenu .menu-item-active::before {
+  width: 2px;
+  background: var(--primary);
+}
+
+.menu-submenu .menu-icon {
+  width: 18px;
+  height: 18px;
+  font-size: 13px;
+}
