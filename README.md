@@ -50,3 +50,7 @@ npm run build
 ## Installers
 
 See [BUILD_INSTALLERS.md](BUILD_INSTALLERS.md).
+
+### Sale Manager
+
+The web and desktop UI now include a dedicated Sale Manager separate from Shopify Discount Manager. It can apply or remove compare-at-price based Sale pricing by collection, vendor, or selected products, across selected stores. Applying Sale only affects variants with inventory greater than 10; removal can restore prices regardless of stock. Test mode, fixed-height logs, and product progress counters are included.
