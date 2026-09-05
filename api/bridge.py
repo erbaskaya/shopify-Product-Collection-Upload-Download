@@ -2,11 +2,14 @@ from http.server import BaseHTTPRequestHandler
 import base64
 import hashlib
 import hmac
+import http.client
+import ipaddress
 import json
 import os
 import platform
 import re
 import secrets
+import socket
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -216,14 +219,72 @@ THEME_MAX_BYTES = 250 * 1024 * 1024
 
 
 def theme_cdn_url(url):
-    parsed = urllib.parse.urlparse(url)
+    # The URL comes from an authenticated Shopify theme-file response, never
+    # from the request payload. Shopify does not promise a fixed CDN hostname;
+    # short-lived signed object-storage URLs must remain byte-for-byte intact.
+    if not isinstance(url, str) or re.search(r"[\\\x00-\x20\x7f]", url):
+        raise ValueError("Shopify returned an invalid theme asset URL.")
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except ValueError:
+        raise ValueError("Shopify returned an invalid theme asset URL.") from None
     host = (parsed.hostname or "").lower()
-    allowed = ("shopify.com", "shopifycdn.com", "shopifycdn.net", "myshopify.com")
-    if (parsed.scheme != "https" or parsed.username or parsed.password
-            or parsed.port not in (None, 443)
-            or not any(host == domain or host.endswith("." + domain) for domain in allowed)):
-        raise ValueError("Shopify returned an unsupported theme asset URL.")
+    if (parsed.scheme != "https" or not host or parsed.username is not None
+            or parsed.password is not None or port not in (None, 443)
+            or parsed.fragment or "%" in host
+            or host.rstrip(".") == "localhost"
+            or host.rstrip(".").endswith((".localhost", ".local", ".internal"))):
+        raise ValueError("Theme assets require a public HTTPS address.")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        if not re.fullmatch(r"[a-z0-9.-]+", host):
+            raise ValueError("Shopify returned an invalid theme asset hostname.")
+    else:
+        if not theme_public_ip(address):
+            raise ValueError("Private/local theme asset addresses are not allowed.")
     return url
+
+
+def theme_public_ip(address):
+    address = getattr(address, "ipv4_mapped", None) or address
+    return address.is_global and not address.is_multicast and not address.is_reserved
+
+
+def theme_public_connection(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+    """Resolve, validate, then connect to that exact public IP (no second DNS lookup)."""
+    host, port = address
+    records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    if not records or any(not theme_public_ip(ipaddress.ip_address(record[4][0])) for record in records):
+        raise ValueError("Private/local theme asset addresses are not allowed.")
+    last_error = None
+    for family, socktype, proto, _, sockaddr in records:
+        connection = socket.socket(family, socktype, proto)
+        try:
+            if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+                connection.settimeout(timeout)
+            if source_address:
+                connection.bind(source_address)
+            connection.connect(sockaddr)
+            return connection
+        except OSError as exc:
+            last_error = exc
+            connection.close()
+    raise last_error or OSError("Theme asset host could not be reached.")
+
+
+class ThemeAssetHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # HTTPSConnection still verifies the certificate/SNI against the
+        # original hostname. Only the TCP destination is pinned to a public IP.
+        self._create_connection = theme_public_connection
+
+
+class ThemeAssetHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(ThemeAssetHTTPSConnection, req, context=self._context)
 
 
 class ThemeAssetRedirect(urllib.request.HTTPRedirectHandler):
@@ -238,7 +299,7 @@ def theme_url_chunk(url, offset, size):
     req = urllib.request.Request(theme_cdn_url(url), headers={
         "Range": f"bytes={offset}-{end - 1}", "Accept-Encoding": "identity"
     })
-    with urllib.request.build_opener(ThemeAssetRedirect()).open(req, timeout=25) as response:
+    with urllib.request.build_opener(ThemeAssetRedirect(), ThemeAssetHTTPSHandler()).open(req, timeout=25) as response:
         if response.status == 206:
             match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", response.headers.get("Content-Range", ""))
             if not match or tuple(map(int, match.groups())) != (offset, end - 1, size):
