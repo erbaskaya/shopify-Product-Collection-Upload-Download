@@ -1,12 +1,13 @@
 import { createStoredZip, parseZip, type BrowserZipEntry } from "./browserZip";
 import type { DiagnosticsResult, HistoryInput, HistoryRecord, SaveStoreInput, StoreRecord } from "./desktopApi";
 
-async function bridge<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+async function bridge<T>(action: string, payload: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
   const response = await fetch("/api/bridge", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, ...payload }),
+    signal,
   });
   const data = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` })) as {ok?:boolean;result?:T;error?:string};
   if (!response.ok || !data.ok) {
@@ -57,6 +58,8 @@ export const webAuthApi = {
 };
 
 export const webApi = {
+  themeFileChunk: (storeId: string, themeId: string, filename: string, offset: number, checksumMd5: string | null, signal?: AbortSignal) =>
+    bridge<{base64Data:string;offset:number;nextOffset:number;totalSize:number;checksumMd5:string|null}>("theme_file_chunk", { storeId, themeId, filename, offset, checksumMd5 }, signal),
   listStores: () => bridge<StoreRecord[]>("list_stores"),
   saveStore: (input: SaveStoreInput) => bridge<StoreRecord>("save_store", { input }),
   setActiveStore: (storeId: string) => bridge<void>("set_active_store", { storeId }),

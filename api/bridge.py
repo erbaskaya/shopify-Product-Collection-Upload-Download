@@ -5,6 +5,7 @@ import hmac
 import json
 import os
 import platform
+import re
 import secrets
 import urllib.request
 import urllib.error
@@ -210,6 +211,121 @@ def shopify_graphql(conn, store_id, query, variables, api_version=None):
         raise RuntimeError(f"Shopify HTTP {exc.code}: {detail[:1200]}")
 
 
+THEME_CHUNK_BYTES = 512 * 1024
+THEME_MAX_BYTES = 250 * 1024 * 1024
+
+
+def theme_cdn_url(url):
+    parsed = urllib.parse.urlparse(url)
+    host = (parsed.hostname or "").lower()
+    allowed = ("shopify.com", "shopifycdn.com", "shopifycdn.net", "myshopify.com")
+    if (parsed.scheme != "https" or parsed.username or parsed.password
+            or parsed.port not in (None, 443)
+            or not any(host == domain or host.endswith("." + domain) for domain in allowed)):
+        raise ValueError("Shopify returned an unsupported theme asset URL.")
+    return url
+
+
+class ThemeAssetRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        theme_cdn_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def theme_url_chunk(url, offset, size):
+    """Read a bounded CDN range. Never send the store's access token to a CDN."""
+    end = min(size, offset + THEME_CHUNK_BYTES)
+    req = urllib.request.Request(theme_cdn_url(url), headers={
+        "Range": f"bytes={offset}-{end - 1}", "Accept-Encoding": "identity"
+    })
+    with urllib.request.build_opener(ThemeAssetRedirect()).open(req, timeout=25) as response:
+        if response.status == 206:
+            match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", response.headers.get("Content-Range", ""))
+            if not match or tuple(map(int, match.groups())) != (offset, end - 1, size):
+                raise ValueError("Theme asset range changed or is incomplete. Please retry.")
+        elif response.status == 200:
+            length = response.headers.get("Content-Length")
+            if length is not None and int(length) != size:
+                raise ValueError("Theme asset size changed during download. Please retry.")
+            # Some CDN responses ignore Range. Discard the prefix in bounded blocks.
+            remaining = offset
+            while remaining:
+                block = response.read(min(65536, remaining))
+                if not block:
+                    raise ValueError("Theme asset download was incomplete.")
+                remaining -= len(block)
+        else:
+            raise ValueError(f"Unexpected theme asset HTTP {response.status}")
+        data = response.read(end - offset)
+        if len(data) != end - offset:
+            raise ValueError("Theme asset download was incomplete.")
+        return data
+
+
+def theme_file_chunk(conn, payload):
+    """Large theme files bypass the 4.5 MB Vercel JSON response limit."""
+    theme_id = str(payload.get("themeId") or "")
+    filename = str(payload.get("filename") or "")
+    offset = payload.get("offset", 0)
+    if not re.fullmatch(r"gid://shopify/OnlineStoreTheme/\d+", theme_id):
+        raise ValueError("Invalid theme ID.")
+    if (not filename or re.search(r"[\\\x00-\x1f:*?]", filename)
+            or any(part in ("", ".", "..") for part in filename.split("/"))):
+        raise ValueError("Invalid theme filename.")
+    if type(offset) is not int or offset < 0 or offset > THEME_MAX_BYTES:
+        raise ValueError("Invalid theme file offset.")
+    result = shopify_graphql(conn, payload["storeId"], """query ThemeDownloadChunk($id: ID!, $filenames: [String!]!) {
+      theme(id: $id) {
+        files(first: 1, filenames: $filenames) {
+          nodes { filename size checksumMd5 body {
+            __typename
+            ... on OnlineStoreThemeFileBodyText { content }
+            ... on OnlineStoreThemeFileBodyBase64 { contentBase64 }
+            ... on OnlineStoreThemeFileBodyUrl { url }
+          } }
+          userErrors { code filename }
+        }
+      }
+    }""", {"id": theme_id, "filenames": [filename]}, "2026-07")
+    if result.get("errors"):
+        raise ValueError("; ".join(str(e.get("message", "Shopify error")) for e in result["errors"]))
+    theme = (result.get("data") or {}).get("theme")
+    if not theme:
+        raise ValueError("The selected theme no longer exists.")
+    files = theme.get("files") or {}
+    if files.get("userErrors"):
+        raise ValueError("Shopify could not read the selected theme file: " + str(files["userErrors"]))
+    nodes = files.get("nodes") or []
+    if len(nodes) != 1 or nodes[0].get("filename") != filename:
+        raise ValueError("The selected theme file is missing.")
+    node = nodes[0]
+    size = int(node["size"])
+    if size < 0 or size > THEME_MAX_BYTES or offset > size or (size > 0 and offset == size):
+        raise ValueError("Theme file size or offset is out of range.")
+    if node.get("checksumMd5") != payload.get("checksumMd5"):
+        raise ValueError("Theme changed during download. Please try again.")
+    body = node.get("body") or {}
+    kind = body.get("__typename")
+    if kind == "OnlineStoreThemeFileBodyText" and isinstance(body.get("content"), str):
+        content = body["content"].encode("utf-8")
+    elif kind == "OnlineStoreThemeFileBodyBase64" and isinstance(body.get("contentBase64"), str):
+        content = base64.b64decode(body["contentBase64"], validate=True)
+    elif kind == "OnlineStoreThemeFileBodyUrl" and body.get("url"):
+        content = None
+    else:
+        raise ValueError("Shopify did not return the theme file content.")
+    if content is not None:
+        if len(content) != size:
+            raise ValueError("Theme file download was incomplete.")
+        if node.get("checksumMd5") and hashlib.md5(content).hexdigest() != node["checksumMd5"].lower():
+            raise ValueError("Theme file checksum did not match. Please retry.")
+        data = content[offset:offset + THEME_CHUNK_BYTES]
+    else:
+        data = theme_url_chunk(body["url"], offset, size) if size else b""
+    return {"base64Data": base64.b64encode(data).decode("ascii"), "offset": offset,
+            "nextOffset": offset + len(data), "totalSize": size, "checksumMd5": node.get("checksumMd5")}
+
+
 def safe_external_url(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
@@ -345,6 +461,8 @@ def handle_action(action, payload):
             return shopify_graphql(conn, payload["storeId"], query, {}, "2026-07")
         if action == "graphql":
             return shopify_graphql(conn, payload["storeId"], payload["query"], payload.get("variables") or {}, payload.get("apiVersion"))
+        if action == "theme_file_chunk":
+            return theme_file_chunk(conn, payload)
         if action == "get_settings":
             with conn.cursor() as cur:
                 cur.execute("SELECT values_json FROM spc_settings WHERE store_id=%s", (payload["storeId"],)); row = cur.fetchone()

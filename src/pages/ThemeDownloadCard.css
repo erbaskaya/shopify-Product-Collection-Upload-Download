@@ -1,0 +1,32 @@
+.theme-download-card { min-width: 0; }
+.theme-download-card > header { flex-wrap: wrap; }
+.theme-download-heading { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.theme-download-icon { display: flex; align-items: center; justify-content: center; flex: 0 0 46px; height: 46px; border-radius: 12px; color: var(--primary); background: var(--surface-secondary); }
+.theme-download-body { display: flex; flex-direction: column; gap: 16px; }
+.theme-download-store { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.theme-download-store span { color: var(--text-secondary); overflow-wrap: anywhere; }
+.theme-download-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; }
+.theme-download-controls .field { min-width: 0; }
+.theme-download-controls select { text-overflow: ellipsis; }
+.theme-download-selection { padding: 15px; border: 1px solid var(--border); border-left: 3px solid var(--primary); border-radius: 10px; background: var(--surface-secondary); overflow-wrap: anywhere; }
+.theme-download-selection > div { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.theme-download-selection > div > strong { font-size: 14px; }
+.theme-download-selection p { margin: 8px 0 0; color: var(--text-secondary); font-size: 11px; line-height: 1.6; }
+.theme-download-selection p span { margin: 0 7px; }
+.theme-download-includes { font-size: 12px; line-height: 1.6; }
+.theme-download-includes p { margin: 4px 0; color: var(--text-secondary); }
+.theme-download-includes small { color: var(--text-secondary); }
+.theme-download-progress { padding: 15px; background: var(--surface-secondary); border: 1px solid var(--border); border-radius: 10px; }
+.theme-download-progress > div { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 12px; }
+.theme-download-progress progress { width: 100%; height: 10px; margin: 12px 0 7px; accent-color: var(--primary); }
+.theme-download-progress small { display: block; color: var(--text-secondary); font-size: 11px; overflow-wrap: anywhere; }
+.theme-download-card .notice { overflow-wrap: anywhere; }
+.theme-download-card .form-actions { margin-top: 0; flex-wrap: wrap; }
+.theme-download-card button { transition: filter .15s ease, box-shadow .15s ease; }
+.theme-download-card button:hover:enabled { filter: brightness(.94); }
+.theme-download-card button:focus-visible, .theme-download-card select:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+@media (max-width: 700px) {
+  .theme-download-controls { grid-template-columns: minmax(0, 1fr); }
+  .theme-download-controls > button { justify-self: start; }
+  .theme-download-card .form-actions button { flex: 1 1 auto; }
+}

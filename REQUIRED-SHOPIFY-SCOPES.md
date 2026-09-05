@@ -10,6 +10,7 @@ Enable these Admin API access scopes for every Shopify custom app token used by 
 - read_content, write_content
 - read_discounts, write_discounts
 - read_files, write_files
+- read_themes (Download Selected Theme ZIP; read-only, no write_themes needed)
 
 For order exports older than 60 days, request and enable `read_all_orders` where Shopify allows it.
 After changing custom app scopes, install/update the app in the store and generate a new Admin API access token. Save the new token in Stores.
