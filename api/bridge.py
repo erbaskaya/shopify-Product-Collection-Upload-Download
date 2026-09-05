@@ -323,6 +323,42 @@ def theme_url_chunk(url, offset, size):
         return data
 
 
+def theme_json_content(content, filename):
+    """Validate JSON/JSONC without rewriting exported bytes or removing comments."""
+    try:
+        text = content.decode("utf-8-sig")
+        # Match quoted strings first so URLs and comment markers in settings
+        # values survive. Shopify theme JSON can include generated comments.
+        text = re.sub(r'"(?:\\.|[^"\\])*"|/\*[\s\S]*?\*/|//[^\r\n]*',
+                      lambda match: match[0] if match[0].startswith('"') else " ", text)
+        text = re.sub(r'"(?:\\.|[^"\\])*"|,\s*(?=[}\]])',
+                      lambda match: match[0] if match[0].startswith('"') else "", text)
+        def invalid_constant(value):
+            raise ValueError(value)
+        parsed = json.loads(text, parse_constant=invalid_constant)
+        if not isinstance(parsed, (dict, list)):
+            raise ValueError("JSON object or array expected")
+    except (UnicodeError, ValueError):
+        raise ValueError(f"Theme JSON is invalid or incomplete: {filename}. No ZIP was saved.") from None
+
+
+def theme_json_url_content(url):
+    """Use the HTTP body's actual length, separately from Shopify file metadata."""
+    req = urllib.request.Request(theme_cdn_url(url), headers={"Accept-Encoding": "identity"})
+    with urllib.request.build_opener(ThemeAssetRedirect(), ThemeAssetHTTPSHandler()).open(req, timeout=25) as response:
+        if response.status != 200:
+            raise ValueError(f"Unexpected theme JSON HTTP {response.status}")
+        length = response.headers.get("Content-Length")
+        if length is not None and int(length) > THEME_MAX_BYTES:
+            raise ValueError("Theme JSON exceeds the export size limit.")
+        data = response.read(THEME_MAX_BYTES + 1)
+        if len(data) > THEME_MAX_BYTES:
+            raise ValueError("Theme JSON exceeds the export size limit.")
+        if length is not None and len(data) != int(length):
+            raise ValueError("Theme JSON HTTP download was incomplete.")
+        return data
+
+
 def theme_file_chunk(conn, payload):
     """Large theme files bypass the 4.5 MB Vercel JSON response limit."""
     theme_id = str(payload.get("themeId") or "")
@@ -360,31 +396,42 @@ def theme_file_chunk(conn, payload):
     if len(nodes) != 1 or nodes[0].get("filename") != filename:
         raise ValueError("The selected theme file is missing.")
     node = nodes[0]
-    size = int(node["size"])
-    if size < 0 or size > THEME_MAX_BYTES or offset > size or (size > 0 and offset == size):
+    source_size = int(node["size"])
+    if source_size < 0 or source_size > THEME_MAX_BYTES:
         raise ValueError("Theme file size or offset is out of range.")
     if node.get("checksumMd5") != payload.get("checksumMd5"):
         raise ValueError("Theme changed during download. Please try again.")
     body = node.get("body") or {}
     kind = body.get("__typename")
+    is_json = filename.lower().endswith(".json")
     if kind == "OnlineStoreThemeFileBodyText" and isinstance(body.get("content"), str):
         content = body["content"].encode("utf-8")
     elif kind == "OnlineStoreThemeFileBodyBase64" and isinstance(body.get("contentBase64"), str):
         content = base64.b64decode(body["contentBase64"], validate=True)
     elif kind == "OnlineStoreThemeFileBodyUrl" and body.get("url"):
-        content = None
+        content = theme_json_url_content(body["url"]) if is_json else None
     else:
         raise ValueError("Shopify did not return the theme file content.")
+    size = len(content) if content is not None else source_size
+    if size > THEME_MAX_BYTES or offset > size or (size > 0 and offset == size):
+        raise ValueError("Theme file size or offset is out of range.")
+    content_sha256 = None
     if content is not None:
-        if len(content) != size:
+        if is_json:
+            theme_json_content(content, filename)
+        elif len(content) != source_size:
             raise ValueError("Theme file download was incomplete.")
-        if node.get("checksumMd5") and hashlib.md5(content).hexdigest() != node["checksumMd5"].lower():
+        if not is_json and node.get("checksumMd5") and hashlib.md5(content).hexdigest() != node["checksumMd5"].lower():
             raise ValueError("Theme file checksum did not match. Please retry.")
+        # The source checksum still guards theme revisions above. A separate
+        # digest guards the actual exported representation across chunk reads.
+        content_sha256 = hashlib.sha256(content).hexdigest()
         data = content[offset:offset + THEME_CHUNK_BYTES]
     else:
         data = theme_url_chunk(body["url"], offset, size) if size else b""
     return {"base64Data": base64.b64encode(data).decode("ascii"), "offset": offset,
-            "nextOffset": offset + len(data), "totalSize": size, "checksumMd5": node.get("checksumMd5")}
+            "nextOffset": offset + len(data), "totalSize": size, "sourceSize": source_size,
+            "contentSha256": content_sha256, "checksumMd5": node.get("checksumMd5")}
 
 
 def safe_external_url(url: str) -> str:

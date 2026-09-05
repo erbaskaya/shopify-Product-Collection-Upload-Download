@@ -59,7 +59,7 @@ export const webAuthApi = {
 
 export const webApi = {
   themeFileChunk: (storeId: string, themeId: string, filename: string, offset: number, checksumMd5: string | null, signal?: AbortSignal) =>
-    bridge<{base64Data:string;offset:number;nextOffset:number;totalSize:number;checksumMd5:string|null}>("theme_file_chunk", { storeId, themeId, filename, offset, checksumMd5 }, signal),
+    bridge<{base64Data:string;offset:number;nextOffset:number;totalSize:number;sourceSize:number;contentSha256:string|null;checksumMd5:string|null}>("theme_file_chunk", { storeId, themeId, filename, offset, checksumMd5 }, signal),
   listStores: () => bridge<StoreRecord[]>("list_stores"),
   saveStore: (input: SaveStoreInput) => bridge<StoreRecord>("save_store", { input }),
   setActiveStore: (storeId: string) => bridge<void>("set_active_store", { storeId }),

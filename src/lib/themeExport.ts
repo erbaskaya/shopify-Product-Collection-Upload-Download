@@ -159,30 +159,107 @@ function fromBase64(base64: string): Uint8Array {
   const binary = atob(base64);
   return Uint8Array.from(binary, c => c.charCodeAt(0));
 }
+function validateDownloadedBytes(file: ThemeFile, bytes: Uint8Array) {
+  if (file.filename.toLowerCase().endsWith(".json")) {
+    try {
+      // Validate a copy only. Keep comments, whitespace, BOM, URLs and every
+      // original setting byte unchanged in the ZIP.
+      const json = new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+        .replace(/^\uFEFF/, "")
+        .replace(/"(?:\\.|[^"\\])*"|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, token => token.startsWith('"') ? token : " ")
+        .replace(/"(?:\\.|[^"\\])*"|,\s*(?=[}\]])/g, token => token.startsWith('"') ? token : "");
+      const value = JSON.parse(json);
+      if (value === null || typeof value !== "object") throw new Error("JSON object or array expected");
+    } catch {
+      throw new Error(`Theme JSON is invalid or incomplete: ${file.filename}. No ZIP was saved.`);
+    }
+  } else if (bytes.length !== file.size) {
+    throw new Error(`Incomplete file: ${file.filename} (expected ${file.size} bytes, received ${bytes.length}). No ZIP was saved.`);
+  }
+}
 async function chunkedFile(storeId: string, themeId: string, file: ThemeFile, signal?: AbortSignal): Promise<string> {
-  const output = new Uint8Array(file.size);
+  let output: Uint8Array | null = null;
+  let contentSha256: string | null = null;
+  const isJson = file.filename.toLowerCase().endsWith(".json");
   let offset = 0;
   do {
     const part = await retry(() => webApi.themeFileChunk(storeId, themeId, file.filename, offset, file.checksumMd5, signal), signal);
-    if (part.totalSize !== file.size || part.checksumMd5 !== file.checksumMd5) throw new Error(`Theme changed during download: ${file.filename}. Please try again.`);
+    if (part.sourceSize === undefined) throw new Error("Update api/bridge.py together with the theme download files, then try again.");
+    if (part.sourceSize !== file.size || part.checksumMd5 !== file.checksumMd5) throw new Error(`Theme changed during download: ${file.filename}. Please try again.`);
+    if (!Number.isSafeInteger(part.totalSize) || part.totalSize < 0 || part.totalSize > MAX_THEME_BYTES || (!isJson && part.totalSize !== file.size)) throw new Error(`Invalid downloaded size: ${file.filename}`);
+    if (isJson && !/^[a-f0-9]{64}$/.test(part.contentSha256 || "")) throw new Error(`Missing JSON content verification: ${file.filename}`);
+    if (!output) {
+      output = new Uint8Array(part.totalSize);
+      contentSha256 = part.contentSha256;
+    } else if (part.totalSize !== output.length || part.contentSha256 !== contentSha256) {
+      throw new Error(`Theme file content changed between download chunks: ${file.filename}. Please try again.`);
+    }
     const bytes = fromBase64(part.base64Data);
-    if (part.offset !== offset || part.nextOffset !== offset + bytes.length || part.nextOffset > file.size || (file.size > 0 && !bytes.length)) {
+    if (part.offset !== offset || part.nextOffset !== offset + bytes.length || part.nextOffset > output.length || (output.length > 0 && !bytes.length)) {
       throw new Error(`Incomplete download: ${file.filename}`);
     }
     output.set(bytes, offset);
     offset = part.nextOffset;
-  } while (offset < file.size);
+  } while (offset < output.length);
+  if (contentSha256) {
+    const digest = await crypto.subtle.digest("SHA-256", output);
+    const actual = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+    if (actual !== contentSha256) throw new Error(`Theme file content verification failed: ${file.filename}. No ZIP was saved.`);
+  }
+  validateDownloadedBytes(file, output);
+  if (isJson && output.length !== file.size) {
+    // A metadata size difference is not proof of truncation. Read again and
+    // compare the digest of the complete body before accepting that difference.
+    const confirm = await retry(() => webApi.themeFileChunk(storeId, themeId, file.filename, 0, file.checksumMd5, signal), signal);
+    if (confirm.sourceSize !== file.size || confirm.checksumMd5 !== file.checksumMd5 || confirm.totalSize !== output.length || confirm.contentSha256 !== contentSha256) {
+      throw new Error(`Theme JSON changed during verification: ${file.filename}. Please try again.`);
+    }
+  }
+  checkCancelled(signal);
   return toBase64(output);
 }
 async function bodyToBase64(file: ThemeFile, storeId: string, themeId: string, signal?: AbortSignal): Promise<string> {
   const body = file.body;
-  if (body?.__typename === "OnlineStoreThemeFileBodyText" && typeof body.content === "string") return toBase64(new TextEncoder().encode(body.content));
-  if (body?.__typename === "OnlineStoreThemeFileBodyBase64" && typeof body.contentBase64 === "string") return body.contentBase64;
-  if (body?.__typename === "OnlineStoreThemeFileBodyUrl" && body.url) {
+  let base64Data: string;
+  if (body?.__typename === "OnlineStoreThemeFileBodyText" && typeof body.content === "string") base64Data = toBase64(new TextEncoder().encode(body.content));
+  else if (body?.__typename === "OnlineStoreThemeFileBodyBase64" && typeof body.contentBase64 === "string") base64Data = body.contentBase64;
+  else if (body?.__typename === "OnlineStoreThemeFileBodyUrl" && body.url) {
     if (!isTauriRuntime()) return chunkedFile(storeId, themeId, file, signal);
-    return retry(() => desktopApi.httpGetBinary(body.url!), signal);
+    base64Data = await retry(() => desktopApi.httpGetBinary(body.url!), signal);
+  } else {
+    throw new Error(`Shopify did not return the content of ${file.filename}. No ZIP was saved.`);
   }
-  throw new Error(`Shopify did not return the content of ${file.filename}. No ZIP was saved.`);
+  const bytes = fromBase64(base64Data);
+  validateDownloadedBytes(file, bytes);
+  if (bytes.length !== file.size) {
+    let confirmed: string;
+    if (!isTauriRuntime()) {
+      confirmed = await chunkedFile(storeId, themeId, file, signal);
+    } else {
+      const data = await graphql<{ theme: { files: Connection<ApiThemeFile> } | null }>(storeId, `query ThemeDownloadConfirm($id: ID!, $filenames: [String!]!) {
+        theme(id: $id) { files(first: 1, filenames: $filenames) {
+          nodes { filename size checksumMd5 body { __typename
+            ... on OnlineStoreThemeFileBodyText { content }
+            ... on OnlineStoreThemeFileBodyBase64 { contentBase64 }
+            ... on OnlineStoreThemeFileBodyUrl { url }
+          } }
+          pageInfo { hasNextPage endCursor }
+          userErrors { code filename }
+        } }
+      }`, { id: themeId, filenames: [file.filename] }, signal);
+      if (!data.theme) throw new Error("The selected theme no longer exists.");
+      validateFiles(data.theme.files);
+      const raw = data.theme.files.nodes[0];
+      if (!raw || raw.filename !== file.filename || Number(raw.size) !== file.size || raw.checksumMd5 !== file.checksumMd5) throw new Error(`Theme JSON changed during verification: ${file.filename}`);
+      const repeat = raw.body;
+      if (repeat?.__typename === "OnlineStoreThemeFileBodyText" && typeof repeat.content === "string") confirmed = toBase64(new TextEncoder().encode(repeat.content));
+      else if (repeat?.__typename === "OnlineStoreThemeFileBodyBase64" && typeof repeat.contentBase64 === "string") confirmed = repeat.contentBase64;
+      else if (repeat?.__typename === "OnlineStoreThemeFileBodyUrl" && repeat.url) confirmed = await retry(() => desktopApi.httpGetBinary(repeat.url!), signal);
+      else throw new Error(`Shopify did not return the content of ${file.filename}. No ZIP was saved.`);
+    }
+    if (confirmed !== base64Data) throw new Error(`Theme JSON changed during verification: ${file.filename}. Please try again.`);
+  }
+  return base64Data;
 }
 export function themeZipName(store: Pick<StoreRecord, "domain">, theme: ShopifyTheme): string {
   const clean = (value: string) => value.normalize("NFKC").replace(/[<>:"/\\|?*\x00-\x1f]/g, "-").replace(/\s+/g, "-").replace(/[. -]+$/g, "").slice(0, 80) || "theme";
@@ -202,10 +279,12 @@ export async function downloadShopifyTheme(store: StoreRecord, theme: ShopifyThe
   const pending = [...files.values()];
   const addEntry = (file: ThemeFile, base64Data: string) => {
     checkCancelled(signal);
-    if (fromBase64(base64Data).length !== file.size) throw new Error(`Incomplete file: ${file.filename}. No ZIP was saved.`);
+    const bytes = fromBase64(base64Data);
+    validateDownloadedBytes(file, bytes);
+    if (progress.bytes + bytes.length > MAX_THEME_BYTES) throw new Error("The downloaded theme exceeds the 250 MB browser export limit.");
     entries.push({ name: file.filename, base64Data });
     progress.completed += 1;
-    progress.bytes += file.size;
+    progress.bytes += bytes.length;
     progress.filename = file.filename;
     report();
   };

@@ -56,9 +56,33 @@ Vercel yanıt sınırı kaynağı: https://vercel.com/docs/functions/limitations
 ## Doğrulama
 
 - `npm run build`: başarılı.
-- `node --test tests/theme-export.test.mjs`: 9 test başarılı.
-- `python -m unittest discover -s tests -p 'test_theme_chunks.py' -v`: 7 test başarılı (`requirements.txt` bağımlılıkları kurulu olmalı).
+- `node --test tests/theme-export.test.mjs`: 15 test başarılı.
+- `python -m unittest discover -s tests -p 'test_theme_chunks.py' -v`: 16 test başarılı (`requirements.txt` bağımlılıkları kurulu olmalı).
 - Derlenen uygulama gerçek tarayıcıda test verileriyle kontrol edildi: tema seçimi, tek tema indirme, ZIP kaydı, eski uygulama yedeği, iptal, mağaza değiştirme ve eksik izin mesajı başarılı; sayfa JavaScript hatası yok.
 - Tarayıcıdan indirilen test ZIP'i Python `zipfile` ile açılarak klasörler, dosya listesi, UTF-8 içerik ve ZIP CRC doğrulandı.
 
 Canlı mağaza erişim belirteciyle gerçek Shopify indirmesi ve canlı Vercel dağıtımı bu çalışma ortamında denenmedi.
+
+## Tema dosyası adresi düzeltmesi
+
+`Shopify returned an unsupported theme asset URL.` hatası, ilk sürümdeki dar alan adı filtresinden kaynaklanıyordu. Shopify API'nin verdiği geçici bağlantılar artık yalnızca Shopify alan adı uzantılarıyla sınırlandırılmıyor. İmzalı bağlantının yolu ve sorgu parametreleri aynen korunuyor. Yönlendirmeler de denetleniyor; HTTPS doğrulaması ve yerel/özel ağ adreslerinin engellenmesi devam ediyor. TCP bağlantısı DNS kontrolünde doğrulanan genel IP adresine yapılıyor.
+
+Bu düzeltme için canlı projede yalnızca `api/bridge.py` dosyasını güncellemek yeterlidir. GitHub commit/push sonrasında Vercel dağıtımı Ready olduğunda sayfayı yenileyin, temayı tekrar seçin ve indirin. Bu sürümün adres, yönlendirme ve parça indirme kontrolleri 11 sunucu testiyle doğrulandı; canlı mağazanın gerçek bağlantısı bu ortamda alınmadı.
+
+Shopify'ın bağlantı alanı dokümantasyonu: https://shopify.dev/docs/api/admin-graphql/latest/objects/OnlineStoreThemeFileBodyUrl
+
+## JSON boyut farkı düzeltmesi
+
+`Incomplete file: config/settings_data.json. No ZIP was saved.` hatasını veren kontrol düzeltildi. Önceki kod, API'deki dosya boyutunu döndürülen JSON gövdesinin bayt sayısıyla birebir eşit olmak zorunda kabul ediyordu. Farkın mağazadaki kesin nedeni canlı dosyaya erişmeden belirlenemedi. Artık böyle bir farkta JSON/JSONC sözdizimi, yeniden okunan içeriğin tutarlılığı ve parçalar arasındaki SHA-256 özeti doğrulanıyor. JSON yeniden yazılmıyor; ayarlar, yorumlar, boşluklar, satır sonları ve varsa BOM özgün haliyle ZIP'e giriyor.
+
+JSON için kaynak revizyon bilgisi (sourceSize / checksumMd5) ile indirilen gövdenin boyutu ve özeti (totalSize / contentSha256) ayrı tutulur. ZIP'teki dosya boyutu ve ilerleme sayacı gerçek indirilen bayt sayısını kullanır. Diğer dosyalarda boyut denetimi, HTTP ile yarım kalan yanıtların denetimi ve tema değişikliği kontrolleri devam eder.
+
+Bu sürüm için aşağıdaki üç uygulama dosyasını BİRLİKTE güncelleyin:
+
+- `api/bridge.py`
+- `src/lib/themeExport.ts`
+- `src/lib/webApi.ts`
+
+Düzeltme ZIP'indeki klasör yapısını mevcut GitHub proje kökünde koruyun. ZIP dosyasını depoya tek dosya olarak yüklemek yerine açılmış içeriği aynı yolların üzerine yükleyin. Test dosyalarının yeni sürümleri de küçük düzeltme paketine dahil edildi.
+
+Doğrulama: 15 tarayıcı tarafı birim testi, 16 Python testi ve üretim derlemesi başarılı. Derlenen arayüz gerçek tarayıcıda Python'daki tema dosyası okuma işleviyle beraber, yalnızca Shopify yanıtı test verisi olacak şekilde denendi. Farklı boyut bilgisi döndüren `settings_data.json` indirilerek özgün UTF-8 baytları ve ZIP CRC doğrulandı. Canlı mağazada indirme veya Vercel yayını yapılmadı.

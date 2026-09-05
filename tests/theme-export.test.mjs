@@ -70,7 +70,9 @@ function fixture(files = defaults(), hooks = {}) {
       const selected = files.find(f => f.filename === filename);
       assert.equal(selected.checksumMd5, checksum);
       const bytes = selected.bytes.subarray(offset, offset + 512 * 1024);
-      return { offset, nextOffset: offset + bytes.length, totalSize: selected.bytes.length, checksumMd5: checksum, base64Data: bytes.toString('base64') };
+      const part = { offset, nextOffset: offset + bytes.length, totalSize: selected.bytes.length, sourceSize: Number(selected.size),
+        contentSha256: createHash('sha256').update(selected.bytes).digest('hex'), checksumMd5: checksum, base64Data: bytes.toString('base64') };
+      return hooks.chunk ? hooks.chunk(part, state) : part;
     },
     async saveZipEntries(name, entries) { state.saves.push({ name, entries, zip: createStoredZip(entries) }); return name; },
   };
@@ -145,4 +147,61 @@ test('unsafe paths and a theme without layout/theme.liquid cannot be archived', 
 test('repeated pagination cursor stops safely instead of looping forever', async () => {
   fixture(defaults(), { graphql: async () => ({ data: { themes: { nodes: [theme], pageInfo: { hasNextPage: true, endCursor: 'same' } } } }) });
   await assert.rejects(listShopifyThemes(store.id), /incomplete page/);
+});
+test('settings JSON with a different metadata size is re-read and archived without changing a byte', async () => {
+  const text = '\uFEFF/* Shopify generated header */\r\n{\r\n "current": {"title":"İ ä €", "url":"https://example.com/a//b", "text":"/* keep */",},\r\n "presets": {},\r\n}\r\n';
+  for (const reported of [0, 35, Buffer.byteLength(text) + 100]) {
+    const files = defaults();
+    files[1] = file('config/settings_data.json', text);
+    files[1].size = String(reported);
+    files[1].checksumMd5 = createHash('md5').update('stored representation').digest('hex');
+    const state = fixture(files);
+    const result = await downloadShopifyTheme(store, theme, () => {});
+    const saved = state.saves[0].entries.find(e => e.name === files[1].filename);
+    assert.deepEqual(Buffer.from(saved.base64Data, 'base64'), Buffer.from(text));
+    assert.equal(result.bytes, files.reduce((sum, file) => sum + file.bytes.length, 0));
+    assert.equal(state.calls.filter(c => c.filename === files[1].filename).length, 2);
+  }
+});
+test('large JSON chunks use actual content size while retaining source revision metadata', async () => {
+  const files = defaults();
+  files[1] = file('config/settings_data.json', JSON.stringify({current:{text:'ü'.repeat(310000)}}));
+  files[1].size = String(400 * 1024);
+  const state = fixture(files);
+  await downloadShopifyTheme(store, theme, () => {});
+  assert.deepEqual(state.calls.filter(c => c.filename === files[1].filename).map(c => c.offset), [0, 524288, 0]);
+  assert.deepEqual(Buffer.from(state.saves[0].entries.find(e => e.name === files[1].filename).base64Data, 'base64'), files[1].bytes);
+});
+test('JSON returned as URL or base64 supports representation size differences', async () => {
+  for (const kind of ['Url', 'Base64']) {
+    const files = defaults();
+    files[1] = file('config/settings_data.json', '{"current": {"text":"ä"}, "presets": {}}', kind);
+    files[1].size = '20';
+    const state = fixture(files);
+    await downloadShopifyTheme(store, theme, () => {});
+    assert.deepEqual(Buffer.from(state.saves[0].entries.find(e => e.name === files[1].filename).base64Data, 'base64'), files[1].bytes);
+  }
+});
+test('malformed or truncated JSON remains an error even if the metadata size matches', async () => {
+  for (const content of ['{"current":', '/* not closed {"current":{}}', '{"current": "not closed}', 'null']) {
+    const files = defaults(); files[1] = file('config/settings_data.json', content);
+    const state = fixture(files);
+    await assert.rejects(downloadShopifyTheme(store, theme, () => {}), /JSON is invalid or incomplete/);
+    assert.equal(state.saves.length, 0);
+  }
+});
+test('a corrupt chunk cannot pass by keeping the same length or source checksum', async () => {
+  const files = defaults(); files[1].size = '1';
+  const state = fixture(files, { chunk: part => ({ ...part, base64Data: Buffer.alloc(Buffer.from(part.base64Data, 'base64').length, 32).toString('base64') }) });
+  await assert.rejects(downloadShopifyTheme(store, theme, () => {}), /content verification failed/);
+  assert.equal(state.saves.length, 0);
+});
+test('JSON content changing on the independent read cannot produce a ZIP', async () => {
+  const files = defaults(); files[1].size = '1';
+  const state = fixture(files, { chunk: (part, state) => {
+    if (state.calls.filter(c => c.filename === files[1].filename).length > 1) return { ...part, contentSha256: 'f'.repeat(64) };
+    return part;
+  } });
+  await assert.rejects(downloadShopifyTheme(store, theme, () => {}), /JSON changed during verification/);
+  assert.equal(state.saves.length, 0);
 });
